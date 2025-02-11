@@ -29,7 +29,7 @@ ctk.set_default_color_theme("dark-blue")
 class GarminAdvancedAnalyzer(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Professional Garmin Running Analyzer")
+        self.title("Garmin Running Analyzer")
         self.geometry("1600x900")  # slightly smaller than 1920x1080 for convenience
 
         # Data structures

@@ -51,6 +51,12 @@ Use it to gain deeper insights into training load, pace distributions, route per
 
 ## **Getting Started**
 
+## Screenshot
+
+Below is a preview of the GUI:
+
+![GUI Screenshot](docs/screenshot.png)
+
 ### **Prerequisites**
 
 - **Python 3.8+** installed.
