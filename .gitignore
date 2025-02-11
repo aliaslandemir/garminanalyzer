@@ -1,0 +1,32 @@
+
+
+```gitignore
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment folders
+venv/
+env/
+.venv/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VSCode settings
+.vscode/
+.history/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.sqlite3
