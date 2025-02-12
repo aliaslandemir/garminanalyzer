@@ -9,6 +9,12 @@
 
 **garminanalyzer** is a Python-based **Garmin activity analysis tool** for `.tcx` files, providing **interactive visualizations**, **performance insights**, and **comparisons** in a modern GUI.
 
+## Screenshot
+
+Below is a preview of the GUI:
+
+![GUI Screenshot](docs/screenshot.png)
+
 ### **Key Features**
 - 📊 **Advanced Data Analysis**: Heart Rate, Pace, Elevation, Training Load.
 - 🗺️ **Interactive Route Mapping**: GPS visualization with **pace-based color overlays**.
