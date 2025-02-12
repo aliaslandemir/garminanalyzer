@@ -2,16 +2,8 @@
 """
 gui.py
 ------
-A fully extended CustomTkinter GUI for the Garmin Running Analyzer:
+Garmin Running Analyzer:
 
-Key Features:
-- Icons in top panel (icons/: open.png, pdf.png, compare.png, training.png, route.png)
-- Up to 4-column multi-activity dashboard
-- Single-activity Plotly charts (HR, Pace, Elevation) in browser
-- Route Analysis, PDF Export, Training Load, Compare 2/4
-- Temperature & Location data (via geopy)
-- Removes "Moving Time" from main rows
-- Dark/Green theme, asynchronous loading
 """
 
 import tkinter as tk

@@ -1,71 +1,120 @@
+
 # **garminanalyzer**
 
 ![License](https://img.shields.io/github/license/aliaslandemir/garminanalyzer)
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 ![GitHub stars](https://img.shields.io/github/stars/aliaslandemir/garminanalyzer?style=social)
 
----
-
-## **Table of Contents**
-
-- [Overview](#overview)
-- [Features](#features)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Setting Up the Virtual Environment](#setting-up-the-virtual-environment)
-- [Usage](#usage)
-  - [Loading and Analyzing Activities](#loading-and-analyzing-activities)
-  - [Route Visualization](#route-visualization)
-- [GUI Overview](#gui-overview)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-
----
-
 ## **Overview**
 
-**garminanalyzer** is a Python-based GUI tool designed to parse, analyze, and visualize **Garmin `.tcx`** running activities. It incorporates:
+**garminanalyzer** is a Python-based **Garmin activity analysis tool** for `.tcx` files, providing **interactive visualizations**, **performance insights**, and **comparisons** in a modern GUI.
 
-- **Advanced Data Parsing** for laps, trackpoints (HR, power, cadence), etc.
-- **SQLite Database** storage for quick references.
-- **Plotly Dashboards** for heart rate, speed, and more.
-- **Folium-based** route maps with pace-based color overlays.
-
-Use it to gain deeper insights into training load, pace distributions, route performance, and advanced running metrics like VO2max estimates and custom interval detection.
-
----
-
-## **Features**
-
-- **Multi-Threaded Parsing**: Quickly load one or many `.tcx` files in the background.
-- **Interactive Dashboards**: Real-time Plotly charts (HR, speed, power, distributions).
-- **Folium Route Mapping**: Visualize each activity’s route with color-coded pace segments.
-- **SQLite Storage**: Save essential activity metadata locally for easy future retrieval.
-- **PDF Export**: Generate summary PDF reports for selected activities.
-- **Comparison Tools**: Compare multiple activities’ duration, distance, or training load side by side.
+### **Key Features**
+- 📊 **Advanced Data Analysis**: Heart Rate, Pace, Elevation, Training Load.
+- 🗺️ **Interactive Route Mapping**: GPS visualization with **pace-based color overlays**.
+- 🔄 **Multi-Activity Dashboard**: Compare up to **4 activities** side by side.
+- 📂 **Data Storage & Management**: Save activities in an **SQLite database**.
+- 📈 **Comparison Tools**: Side-by-side performance analysis.
+- 📑 **Export PDF Reports**: Generate activity summaries.
 
 ---
 
-## **Getting Started**
+## **Installation**
 
-## Screenshot
+### **1️⃣ Clone the Repository**
+```bash
+git clone https://github.com/aliaslandemir/garminanalyzer.git
+cd garminanalyzer
+```
 
-Below is a preview of the GUI:
+### **2️⃣ Create & Activate Virtual Environment**
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
 
-![GUI Screenshot](docs/screenshot.png)
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+```
 
-### **Prerequisites**
+### **3️⃣ Install Dependencies**
+```bash
+pip install -r requirements.txt
+```
 
-- **Python 3.8+** installed.
-- **Git** (optional but recommended).
-- **Visual Studio Code** (or similar IDE).
+### **4️⃣ Run the Application**
+```bash
+python gui.py
+```
 
-### **Installation**
+---
 
-1. **Clone the Repository**  
-   ```bash
-   git clone https://github.com/aliaslandemir/garminanalyzer.git
-   cd garminanalyzer
+## **Usage**
+
+### **Loading Activities**
+1. Click **"Open TCX"** to load `.tcx` files.
+2. Activities appear in the **sidebar**.
+3. Click an activity to **view graphs and stats**.
+
+### **Route Visualization**
+- Click **“Route Analysis”** to open an **interactive GPS map**.
+
+### **Comparison Mode**
+- Select **2 or 4 activities** and click **"Compare Activities"**.
+
+### **Export Data**
+- Click **"Export PDF"** to generate a summary report.
+
+---
+
+## **GUI Overview**
+
+| Button         | Functionality |
+|---------------|--------------|
+| **Open TCX** | Load Garmin activities |
+| **Export PDF** | Save activity summary |
+| **Compare Activities** | Side-by-side analysis |
+| **Training Load** | Track training trends |
+| **Route Analysis** | View interactive GPS routes |
+
+### **Tabs**
+- **Dashboard** → Main activity insights.
+- **Route Analysis** → GPS visualization.
+- **Comparison** → Multi-activity metrics.
+
+---
+
+## **Project Structure**
+```
+📂 garminanalyzer/
+│── 📂 src/                # Source Code
+│   ├── advanced_tcx_parser.py
+│   ├── activity_database.py
+│   ├── advanced_visualizer.py
+│── 📂 icons/              # GUI Icons
+│── 📂 docs/               # Documentation
+│── gui.py                 # Main Application
+│── requirements.txt       # Dependencies
+│── README.md              # Documentation
+```
+
+---
+
+## **Contributing**
+1. **Fork** the repository  
+2. **Create a feature branch**  
+3. **Submit a pull request (PR)**  
+
+---
+
+## **License**
+This project is licensed under the **MIT License**.
+
+---
+
+## **Contact**
+- GitHub: [@aliaslandemir](https://github.com/aliaslandemir)
+
+**Enjoy using garminanalyzer? Leave a ⭐ on GitHub! 🚀**
+```
