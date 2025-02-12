@@ -2,17 +2,31 @@
 """
 gui.py
 ------
-A sleeker, modern CustomTkinter GUI for the advanced Garmin Running Analyzer.
+A fully extended CustomTkinter GUI for the Garmin Running Analyzer:
+
+Key Features:
+- Icons in top panel (icons/: open.png, pdf.png, compare.png, training.png, route.png)
+- Up to 4-column multi-activity dashboard
+- Single-activity Plotly charts (HR, Pace, Elevation) in browser
+- Route Analysis, PDF Export, Training Load, Compare 2/4
+- Temperature & Location data (via geopy)
+- Removes "Moving Time" from main rows
+- Dark/Green theme, asynchronous loading
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, Menu
+from tkinter import Menu, filedialog, messagebox
 import customtkinter as ctk
 import queue
 import threading
 import tempfile
 import webbrowser
 import os
+import numpy as np
+import pandas as pd
+from datetime import timedelta
+from geopy.geocoders import Nominatim
+from PIL import Image
 
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -22,31 +36,66 @@ from src.advanced_tcx_parser import AdvancedTcxParser
 from src.activity_database import ActivityDatabase
 from src.advanced_visualizer import AdvancedVisualizer
 
-# Appearance
+# Appearance setup
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("dark-blue")
+ctk.set_default_color_theme("green")
 
-class GarminAdvancedAnalyzer(ctk.CTk):
+class GarminUltimateAnalyzer(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Garmin Running Analyzer")
-        self.geometry("1600x900")  # slightly smaller than 1920x1080 for convenience
+        self.title("Garmin Ultimate Analyzer")
+        self.geometry("1920x1080")
 
         # Data structures
-        self.activities = {}
+        self.activities = {}      # path -> activity_data
         self.db = ActivityDatabase()
         self.parse_queue = queue.Queue()
 
-        # Main UI creation
+        # For location geocoding
+        self.geolocator = Nominatim(user_agent="garmin-analyzer")
+
+        # Load icons
+        self.icons = {}
+        self._load_icons()
+
+        # Build UI
         self._create_menu()
         self._setup_ui()
-        self._bind_events()
+        self._setup_bindings()
 
         # Periodically check parse queue
         self._poll_parse_queue()
 
     # ------------------------------------------------------
-    # Menubar
+    # Icon loading
+    # ------------------------------------------------------
+    def _load_icons(self):
+        """
+        Attempt to load icons from 'icons/' folder.
+        If missing, use a gray placeholder.
+        """
+        icon_files = {
+            'open': 'open.png',
+            'pdf': 'pdf.png',
+            'compare': 'compare.png',
+            'training': 'training.png',
+            'route': 'route.png'
+        }
+        for key, filename in icon_files.items():
+            self.icons[key] = self._attempt_load_icon(filename)
+
+    def _attempt_load_icon(self, filename):
+        try:
+            path = os.path.join("icons", filename)
+            img = Image.open(path)
+            return ctk.CTkImage(light_image=img, dark_image=img, size=(24,24))
+        except:
+            # Gray placeholder if fail
+            placeholder = Image.new('RGB', (24,24), color='gray')
+            return ctk.CTkImage(light_image=placeholder, dark_image=placeholder, size=(24,24))
+
+    # ------------------------------------------------------
+    # Menu
     # ------------------------------------------------------
     def _create_menu(self):
         main_menu = Menu(self, tearoff=0)
@@ -66,161 +115,123 @@ class GarminAdvancedAnalyzer(ctk.CTk):
         self.config(menu=main_menu)
 
     # ------------------------------------------------------
-    # Layout Setup
+    # UI Setup
     # ------------------------------------------------------
     def _setup_ui(self):
-        # Overall: two main columns
-        #  - Left Column: sidebar for search + activity list
-        #  - Right Column: tabbed interface (Dashboard / Route / Comparison)
+        # Top control panel
+        self.top_panel = ctk.CTkFrame(self, height=60)
+        self.top_panel.pack(fill="x", padx=10, pady=5)
+        self._build_top_panel()
 
-        # A top-level frame to hold columns
+        # Main content
         self.main_frame = ctk.CTkFrame(self, corner_radius=0)
         self.main_frame.pack(fill="both", expand=True)
 
-        # Grid approach: left col is narrower, right col is the big area
-        self.main_frame.columnconfigure(0, weight=0, minsize=300)
+        self.main_frame.columnconfigure(0, weight=0, minsize=350)
         self.main_frame.columnconfigure(1, weight=1)
         self.main_frame.rowconfigure(0, weight=1)
 
-        # LEFT SIDEBAR
+        # Sidebar
         self.sidebar = ctk.CTkFrame(self.main_frame, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
 
-        # RIGHT CONTENT
+        # Tabs on the right
         self.content_frame = ctk.CTkFrame(self.main_frame, corner_radius=0)
         self.content_frame.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
 
-        # Build the sidebar (search + list)
+        # Build components
         self._build_sidebar()
-
-        # Build the tabbed interface
         self._build_tabs()
 
-        # Status bar at bottom
-        self._create_status_bar()
+        # Status bar
+        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=2)
+
+    def _build_top_panel(self):
+        button_params = {
+            'height': 40,
+            'width': 200,
+            'font': ctk.CTkFont(size=14, weight="bold"),
+            'corner_radius': 8
+        }
+        top_buttons = [
+            ("Open TCX", self.icons['open'], self.load_tcx),
+            ("Export PDF", self.icons['pdf'], self.export_pdf),
+            ("Compare Activities", self.icons['compare'], self.show_comparison),
+            ("Training Load", self.icons['training'], self.show_training_load),
+            ("Route Analysis", self.icons['route'], self.show_route_analysis),
+        ]
+        for col, (txt, icon, cmd) in enumerate(top_buttons):
+            self.top_panel.grid_columnconfigure(col, weight=1, uniform="top_col")
+            ctk.CTkButton(
+                self.top_panel, text=txt, image=icon, command=cmd, **button_params
+            ).grid(row=0, column=col, padx=5, pady=5, sticky="ew")
 
     def _build_sidebar(self):
-        """
-        Sidebar with a search box + list of loaded activities.
-        """
-        # A label or branding at the top
-        heading_label = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.sidebar,
             text="Activities",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        heading_label.pack(padx=10, pady=(10, 5))
+            font=ctk.CTkFont(size=18, weight="bold")
+        ).pack(padx=10, pady=(10,5))
 
-        # Search entry
         self.search_entry = ctk.CTkEntry(
-            self.sidebar, 
-            placeholder_text="Search..."
+            self.sidebar,
+            placeholder_text="Search...",
+            font=ctk.CTkFont(size=14)
         )
         self.search_entry.pack(fill="x", padx=10, pady=(0,10))
 
-        # Activity list
         self.act_list = tk.Listbox(
             self.sidebar,
             selectmode=tk.EXTENDED,
             bg='#2b2b2b',
             fg='white',
-            font=('TkDefaultFont', 11),
+            font=('TkDefaultFont',14),
             height=25
         )
         self.act_list.pack(fill="both", expand=True, padx=10, pady=5)
 
-        # Right-click menu on the list
+        # Right-click
         self.list_menu = tk.Menu(self.sidebar, tearoff=0)
         self.list_menu.add_command(label="Show Details", command=self.show_details)
         self.list_menu.add_command(label="Delete", command=self.delete_activity)
 
     def _build_tabs(self):
-        """
-        Create a tabbed interface on the right side with:
-         - Dashboard
-         - Route Analysis
-         - Comparison
-        """
-        self.tabview = ctk.CTkTabview(self.content_frame, height=400, width=400)
+        self.tabview = ctk.CTkTabview(self.content_frame)
         self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.dashboard_tab = self.tabview.add("Dashboard")
         self.map_tab = self.tabview.add("Route Analysis")
         self.comp_tab = self.tabview.add("Comparison")
 
-        # Initialize each tab's layout
-        self._init_dashboard_tab()
-        self._init_map_tab()
-        self._init_comparison_tab()
+        self.dashboard_container = ctk.CTkFrame(self.dashboard_tab)
+        self.dashboard_container.pack(fill="both", expand=True, padx=10, pady=10)
 
-    def _init_dashboard_tab(self):
-        """
-        Dashboard: top metrics + a frame for potential charts
-        """
-        # Top row: metrics
-        metrics_frame = ctk.CTkFrame(self.dashboard_tab)
-        metrics_frame.pack(fill="x", padx=10, pady=10)
-
-        self.metrics = {
-            'duration': self._create_metric_card(metrics_frame, "Duration", "--"),
-            'distance': self._create_metric_card(metrics_frame, "Distance", "--"),
-            'elevation': self._create_metric_card(metrics_frame, "Elevation", "--"),
-            'calories': self._create_metric_card(metrics_frame, "Calories", "--")
-        }
-
-        # Plot area
-        self.plot_frame = ctk.CTkFrame(self.dashboard_tab)
-        self.plot_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-    def _init_map_tab(self):
-        """
-        Route analysis tab: pace colormap button
-        """
-        info_label = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.map_tab,
-            text="Generate a Folium Map with Pace-based color.\nSelect an activity on the left, then click below.",
-            justify=tk.LEFT
-        )
-        info_label.pack(padx=10, pady=(10,5))
+            text="Select an activity and then click 'Route Analysis' above.",
+            font=ctk.CTkFont(size=14),
+            justify=tk.CENTER
+        ).pack(expand=True)
 
-        show_route_button = ctk.CTkButton(
-            self.map_tab,
-            text="Show Route Analysis (Pace Colormap)",
-            command=self.show_route_analysis
-        )
-        show_route_button.pack(pady=10)
-
-    def _init_comparison_tab(self):
-        """
-        Basic placeholder for the 'Comparison' tab. 
-        We'll display comparison results in a popup or in this tab if desired.
-        """
-        info_label = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.comp_tab,
-            text="Use 'Analysis → Compare Activities' from the menu.\nResults appear in a separate window.",
-            justify=tk.LEFT
-        )
-        info_label.pack(padx=10, pady=10)
-
-    def _create_metric_card(self, parent, title, value):
-        frame = ctk.CTkFrame(parent, width=150, height=80)
-        frame.pack_propagate(False)
-        frame.pack(side=tk.LEFT, padx=5, pady=5)
-
-        title_label = ctk.CTkLabel(frame, text=title, font=('Arial', 12))
-        title_label.pack(pady=(5,0))
-
-        value_label = ctk.CTkLabel(frame, text=value, font=('Arial', 18, 'bold'))
-        value_label.pack(expand=True)
-
-        return value_label
-
-    def _create_status_bar(self):
-        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=2)
+            text="Use 'Compare Activities' if exactly 2 or 4 are selected,\n"
+                 "or select up to 4 for side-by-side dashboard columns.",
+            font=ctk.CTkFont(size=14),
+            justify=tk.CENTER
+        ).pack(expand=True)
 
     # ------------------------------------------------------
-    # Background Parsing
+    # Binding
+    # ------------------------------------------------------
+    def _setup_bindings(self):
+        self.act_list.bind('<<ListboxSelect>>', self.on_activity_select)
+        self.act_list.bind("<Button-3>", self.show_list_menu)
+        self.search_entry.bind("<KeyRelease>", self.filter_activities)
+
+    # ------------------------------------------------------
+    # Poll parse queue
     # ------------------------------------------------------
     def _poll_parse_queue(self):
         while not self.parse_queue.empty():
@@ -228,201 +239,393 @@ class GarminAdvancedAnalyzer(ctk.CTk):
             if isinstance(parser_or_error, Exception):
                 self.show_error(f"Error loading {os.path.basename(path)}: {parser_or_error}")
             else:
-                activity_data = parser_or_error.activity_data
-                self.db.save_activity(activity_data)
-                self.activities[path] = activity_data
+                act_data = parser_or_error.activity_data
+                self.db.save_activity(act_data)
+                self.activities[path] = act_data
+                # Insert name
                 self.act_list.insert(tk.END, os.path.basename(path))
                 self.update_status(f"Loaded: {os.path.basename(path)}")
         self.after(200, self._poll_parse_queue)
 
-    def load_tcx(self):
-        files = filedialog.askopenfilenames(filetypes=[("TCX Files", "*.tcx")])
-        if not files:
-            return
-
-        def parse_file(path):
-            try:
-                parser = AdvancedTcxParser(path)
-                self.parse_queue.put((path, parser))
-            except Exception as e:
-                self.parse_queue.put((path, e))
-
-        for path in files:
-            thread = threading.Thread(target=parse_file, args=(path,), daemon=True)
-            thread.start()
-
     # ------------------------------------------------------
-    # Right-Click Menu Handling
+    # Right-click menu
     # ------------------------------------------------------
     def show_list_menu(self, event):
         widget = event.widget
-        index = widget.nearest(event.y)
-        if 0 <= index < len(self.act_list.get(0, tk.END)):
+        idx = widget.nearest(event.y)
+        if 0<= idx < len(self.act_list.get(0,tk.END)):
             self.act_list.selection_clear(0, tk.END)
-            self.act_list.selection_set(index)
+            self.act_list.selection_set(idx)
         try:
             self.list_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self.list_menu.grab_release()
 
     # ------------------------------------------------------
-    # Event Bindings
+    # Load TCX
     # ------------------------------------------------------
-    def _bind_events(self):
-        self.act_list.bind('<<ListboxSelect>>', self.on_activity_select)
-        self.act_list.bind("<Button-3>", self.show_list_menu)
-        self.search_entry.bind("<KeyRelease>", self.filter_activities)
+    def load_tcx(self):
+        files = filedialog.askopenfilenames(filetypes=[("TCX Files","*.tcx")])
+        if not files:
+            return
+        def parse_file(path):
+            try:
+                parser = AdvancedTcxParser(path)
+                self.parse_queue.put((path, parser))
+            except Exception as e:
+                self.parse_queue.put((path, e))
+        for f in files:
+            t=threading.Thread(target=parse_file, args=(f,), daemon=True)
+            t.start()
 
+    # ------------------------------------------------------
+    # Searching
+    # ------------------------------------------------------
+    def filter_activities(self, event=None):
+        term = self.search_entry.get().lower()
+        self.act_list.delete(0, tk.END)
+        for path in self.activities.keys():
+            fname = os.path.basename(path).lower()
+            if term in fname:
+                self.act_list.insert(tk.END, os.path.basename(path))
+
+    # ------------------------------------------------------
+    # Single or Multi Activity => show in dashboard
+    # ------------------------------------------------------
     def on_activity_select(self, event):
-        selected = self.act_list.curselection()
-        if not selected:
+        sel = self.act_list.curselection()
+        if not sel:
             return
-        if len(selected) == 1:
-            self.show_single_activity()
+
+        if len(sel)==1:
+            path = list(self.activities.keys())[sel[0]]
+            act_data = self.activities[path]
+            # open interactive plot in browser
+            self._open_interactive_plot(act_data)
+
+            # Show single column
+            acts_dict = { path: act_data }
+            self._show_dashboard_activities(acts_dict)
         else:
-            self.show_comparison()
+            # up to 4 columns
+            selected_dict = {}
+            for i, idx in enumerate(sel):
+                if i>=4:
+                    break
+                p= list(self.activities.keys())[idx]
+                selected_dict[p] = self.activities[p]
+            self._show_dashboard_activities(selected_dict)
 
-    # ------------------------------------------------------
-    # Core Functionalities
-    # ------------------------------------------------------
-    def show_single_activity(self):
-        selected = self.act_list.curselection()
-        if not selected:
-            return
-
-        path = list(self.activities.keys())[selected[0]]
-        activity = self.activities[path]
-        laps = activity['laps']
-
-        total_duration = sum(l.get('total_time', 0) or 0 for l in laps)
-        total_distance = sum(l.get('distance', 0) or 0 for l in laps)
-        total_calories = sum(l.get('calories', 0) or 0 for l in laps)
-        elev_gain = activity['extended_stats'].get('elevation_gain', 0)
-
-        self.metrics['duration'].configure(text=f"{round(total_duration, 2)} s")
-        self.metrics['distance'].configure(text=f"{round(total_distance, 2)} m")
-        self.metrics['elevation'].configure(text=f"{round(elev_gain, 2)} m")
-        self.metrics['calories'].configure(text=str(total_calories))
-
-        # Clear old charts in dashboard
-        for widget in self.plot_frame.winfo_children():
-            widget.destroy()
-
-        # 1) Main multi-trace dashboard
+    def _open_interactive_plot(self, activity):
+        """
+        Creates the interactive Plotly chart & distribution in new browser tabs
+        """
         fig = AdvancedVisualizer.create_interactive_dashboard(activity)
-        # 2) Optional distribution histogram
-        fig_dist = AdvancedVisualizer.create_distribution_plots(activity)
-
         if fig:
+            import tempfile
             html_file = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
             fig.write_html(html_file.name)
             webbrowser.open_new_tab(f"file://{html_file.name}")
 
+        fig_dist = AdvancedVisualizer.create_distribution_plots(activity)
         if fig_dist:
+            import tempfile
             html_file2 = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
             fig_dist.write_html(html_file2.name)
             webbrowser.open_new_tab(f"file://{html_file2.name}")
 
+    def _show_dashboard_activities(self, acts_dict):
+        """
+        Clear the dashboard, then show up to 4 columns side by side.
+        """
+        for widget in self.dashboard_container.winfo_children():
+            widget.destroy()
+
+        n= min(len(acts_dict),4)
+        for i in range(n):
+            self.dashboard_container.columnconfigure(i,weight=1,uniform="dashcol")
+
+        col=0
+        for path, data in list(acts_dict.items())[:n]:
+            self._create_dashboard_column(col, path, data)
+            col+=1
+
+    def _create_dashboard_column(self, col_index, path, data):
+        # Summaries
+        laps= data['laps']
+        total_time= sum(l.get('total_time',0) for l in laps)
+        total_dist= sum(l.get('distance',0) for l in laps)
+        total_cal= sum(l.get('calories',0) for l in laps)
+        elev= data['extended_stats'].get('elevation_gain',0)
+
+        ex= self._compute_extra_metrics(data)
+        meta_title = data['metadata'].get('title') or os.path.basename(path)
+
+        col_frame = ctk.CTkFrame(self.dashboard_container)
+        col_frame.grid(row=0, column=col_index, padx=10, pady=10, sticky="nsew")
+
+        # row1
+        row1 = ctk.CTkFrame(col_frame)
+        row1.pack(fill="x", padx=5, pady=5)
+        self._create_metric_card(row1, "Duration", f"{round(total_time,2)} s")
+        self._create_metric_card(row1, "Distance", f"{round(total_dist,2)} m")
+        self._create_metric_card(row1, "Elevation", f"{round(elev,2)} m")
+        self._create_metric_card(row1, "Calories", str(total_cal))
+
+        # row2
+        row2= ctk.CTkFrame(col_frame)
+        row2.pack(fill="x", padx=5, pady=5)
+        avg_hr_txt= f"{ex['avg_hr']} bpm" if ex['avg_hr'] else "--"
+        max_hr_txt= f"{ex['max_hr']} bpm" if ex['max_hr'] else "--"
+        pace_txt= ex['avg_pace'] if ex['avg_pace'] else "--"
+        elapsed_txt= ex['elapsed_time'] if ex['elapsed_time'] else "--"
+
+        self._create_metric_card(row2,"Avg HR",avg_hr_txt)
+        self._create_metric_card(row2,"Max HR",max_hr_txt)
+        self._create_metric_card(row2,"Avg Pace",pace_txt)
+        self._create_metric_card(row2,"Elapsed",elapsed_txt)
+
+        # White/Red panel
+        fancy= ctk.CTkFrame(col_frame,fg_color="white")
+        fancy.pack(fill="x", padx=5, pady=5)
+
+        ctk.CTkLabel(
+            fancy,
+            text=meta_title,
+            text_color="red",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(pady=(5,0))
+
+        lines=[]
+        if ex['location']:
+            lines.append(f"Location: {ex['location']}")
+        if ex['avg_temp'] is not None:
+            lines.append(f"Avg Temp: {ex['avg_temp']} °C")
+        lines.append(f"Sport: {data['metadata'].get('sport','Unknown')}")
+
+        if not lines:
+            lines.append("No location or temperature data.")
+
+        ctk.CTkLabel(
+            fancy,
+            text="\n".join(lines),
+            justify="left",
+            text_color="red",
+            font=ctk.CTkFont(size=14)
+        ).pack(pady=(0,5))
+
+    def _create_metric_card(self, parent, title, value):
+        frame = ctk.CTkFrame(parent, width=120, height=60)
+        frame.pack_propagate(False)
+        frame.pack(side=tk.LEFT, padx=5, pady=5)
+
+        ctk.CTkLabel(frame, text=title, font=ctk.CTkFont(size=12)).pack(pady=(5,0))
+        ctk.CTkLabel(frame, text=value, font=ctk.CTkFont(size=16, weight="bold")).pack(expand=True)
+
+    # ------------------------------------------------------
+    # Additional Metrics (location, temp, hr, pace)
+    # ------------------------------------------------------
+    def _compute_extra_metrics(self, activity):
+        df = activity.get('trackpoints', pd.DataFrame())
+        if df.empty or 'time' not in df.columns:
+            return {
+                'avg_hr':None,'max_hr':None,'avg_pace':None,'elapsed_time':None,
+                'avg_temp':None,'location':None
+            }
+
+        # HR
+        if 'hr' in df.columns and not df['hr'].dropna().empty:
+            avg_hr= round(df['hr'].mean(),1)
+            max_hr= int(df['hr'].max())
+        else:
+            avg_hr,max_hr= None,None
+
+        # Pace
+        pace_str=None
+        elapsed_str=None
+        if len(df)>1:
+            total_time_sec= (df['time'].iloc[-1] - df['time'].iloc[0]).total_seconds()
+            dist_start= df['distance'].iloc[0]
+            dist_end= df['distance'].iloc[-1]
+            total_dist= dist_end - dist_start
+            if total_dist>1 and total_time_sec>1:
+                pace_s_per_m = total_time_sec / total_dist
+                pace_min_km  = pace_s_per_m*1000 / 60
+                pm= int(pace_min_km)
+                ps= int((pace_min_km - pm)*60)
+                pace_str= f"{pm}:{ps:02d} min/km"
+                elapsed_str= str(timedelta(seconds=int(total_time_sec)))
+
+        # Temperature
+        if 'temperature' in df.columns and not df['temperature'].dropna().empty:
+            avg_temp= round(df['temperature'].mean(),1)
+        else:
+            avg_temp=None
+
+        # Location from first lat/lon
+        location_str=None
+        if 'latitude' in df.columns and 'longitude' in df.columns:
+            valid= df[['latitude','longitude']].dropna()
+            if not valid.empty:
+                lat= valid.iloc[0]['latitude']
+                lon= valid.iloc[0]['longitude']
+                try:
+                    rev= self.geolocator.reverse(f"{lat}, {lon}")
+                    if rev:
+                        location_str= rev.address
+                except:
+                    pass
+
+        return {
+            'avg_hr': avg_hr,
+            'max_hr': max_hr,
+            'avg_pace': pace_str,
+            'elapsed_time': elapsed_str,
+            'avg_temp': avg_temp,
+            'location': location_str
+        }
+
+    # ------------------------------------------------------
+    # Show Details, PDF, etc.
+    # ------------------------------------------------------
     def show_details(self):
-        selected = self.act_list.curselection()
-        if not selected:
+        sel= self.act_list.curselection()
+        if not sel:
             return
-        activity_key = list(self.activities.keys())[selected[0]]
-        activity = self.activities[activity_key]
+        path= list(self.activities.keys())[sel[0]]
+        data= self.activities[path]
 
-        laps = activity['laps']
-        durations = [lap.get('total_time', 0) for lap in laps]
-        total_duration = sum(durations) if durations else 0
-        distances = [lap.get('distance', 0) for lap in laps]
-        total_distance = sum(distances) if distances else 0
-        cals = [lap.get('calories', 0) for lap in laps]
-        total_calories = sum(cals) if cals else 0
+        laps= data['laps']
+        total_dur= sum(l.get('total_time',0) for l in laps)
+        total_dist= sum(l.get('distance',0) for l in laps)
+        total_cal= sum(l.get('calories',0) for l in laps)
 
-        # A small popup window
-        detail_window = ctk.CTkToplevel(self)
-        detail_window.title("Activity Details")
-        detail_window.geometry("500x400")
+        detail_win= ctk.CTkToplevel(self)
+        detail_win.title("Activity Details")
+        detail_win.geometry("500x400")
 
-        text = f"""
-Sport: {activity['metadata']['sport']}
-Start Time: {activity['metadata']['start_time']}
-Duration (s): {round(total_duration,2)}
-Distance (m): {round(total_distance,2)}
-Calories: {total_calories}
-VO2 Max: {activity['metadata']['training'].get('vo2_max', 'N/A')}
-Training Effect: {activity['metadata']['training'].get('training_effect', 'N/A')}
+        txt= f"""
+Sport: {data['metadata'].get('sport','Unknown')}
+Start Time: {data['metadata'].get('start_time','N/A')}
+Duration (s): {round(total_dur,2)}
+Distance (m): {round(total_dist,2)}
+Calories: {total_cal}
+VO2 Max: {data['metadata']['training'].get('vo2_max','N/A')}
+Training Effect: {data['metadata']['training'].get('training_effect','N/A')}
 
 Extended Stats:
-{activity['extended_stats']}
+{data.get('extended_stats',{})}
 """
-        info_label = ctk.CTkLabel(detail_window, text=text, justify="left")
-        info_label.pack(fill="both", expand=True, padx=20, pady=20)
+        ctk.CTkLabel(detail_win, text=txt, justify="left").pack(fill="both", expand=True, padx=20, pady=20)
 
     def show_route_analysis(self):
-        selected = self.act_list.curselection()
-        if not selected:
-            messagebox.showwarning("No Activity Selected", "Please select an activity first.")
+        sel= self.act_list.curselection()
+        if not sel:
+            messagebox.showinfo("Route Analysis","No activity selected.")
             return
-        path = list(self.activities.keys())[selected[0]]
-        activity = self.activities[path]
+        path= list(self.activities.keys())[sel[0]]
+        data= self.activities[path]
 
-        route_map = AdvancedVisualizer.create_route_map(activity)
-        if route_map is None:
-            self.show_error("No valid lat/long data found for route.")
+        rmap= AdvancedVisualizer.create_route_map(data)
+        if not rmap:
+            self.show_error("No valid lat/long data for route.")
             return
 
-        temp_html = tempfile.NamedTemporaryFile(delete=False, suffix='.html')
-        route_map.save(temp_html.name)
-        webbrowser.open_new_tab(f"file://{temp_html.name}")
+        import tempfile
+        html_file= tempfile.NamedTemporaryFile(delete=False, suffix='.html')
+        rmap.save(html_file.name)
+        webbrowser.open_new_tab(f"file://{html_file.name}")
 
     def show_comparison(self):
-        selected = self.act_list.curselection()
-        if len(selected) < 2:
-            messagebox.showwarning("Selection Error", "Select at least 2 activities to compare")
+        sel= self.act_list.curselection()
+        n= len(sel)
+        if n not in [2,4]:
+            messagebox.showwarning("Compare Activities","Select exactly 2 or 4.")
             return
 
-        comparison_window = ctk.CTkToplevel(self)
-        comparison_window.title("Activity Comparison")
-        comparison_window.geometry("500x400")
+        comp_win= ctk.CTkToplevel(self)
+        comp_win.title("Activity Comparison")
 
-        text = ""
-        for idx in selected:
-            key = list(self.activities.keys())[idx]
-            data = self.activities[key]
-            name = os.path.basename(key)
+        if n==2:
+            comp_win.geometry("800x400")
+            comp_win.columnconfigure(0, weight=1)
+            comp_win.columnconfigure(1, weight=1)
+            comp_win.rowconfigure(0, weight=1)
+        else:
+            comp_win.geometry("800x600")
+            comp_win.columnconfigure(0, weight=1)
+            comp_win.columnconfigure(1, weight=1)
+            comp_win.rowconfigure(0, weight=1)
+            comp_win.rowconfigure(1, weight=1)
 
-            laps = data['laps']
-            total_time = sum(l.get('total_time', 0) for l in laps)
-            total_dist = sum(l.get('distance', 0) for l in laps)
-            text += f"{name}: Duration={round(total_time,2)}s  Distance={round(total_dist,2)}m\n"
+        row,col=0,0
+        for idx in sel:
+            path= list(self.activities.keys())[idx]
+            data= self.activities[path]
+            name= os.path.basename(path)
 
-        ctk.CTkLabel(comparison_window, text=text, justify="left").pack(padx=20, pady=20, fill="both", expand=True)
+            laps= data['laps']
+            dur= sum(l.get('total_time',0) for l in laps)
+            dist= sum(l.get('distance',0) for l in laps)
+            cal= sum(l.get('calories',0) for l in laps)
+            elev= data['extended_stats'].get('elevation_gain',0)
+            ex= self._compute_extra_metrics(data)
+
+            frame= ctk.CTkFrame(comp_win, corner_radius=10, fg_color="gray20")
+            frame.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+            ctk.CTkLabel(frame, text=name, font=ctk.CTkFont(size=16, weight="bold")).pack(pady=5)
+
+            inf=(
+                f"Duration: {round(dur,2)} s\n"
+                f"Distance: {round(dist,2)} m\n"
+                f"Elevation: {round(elev,2)} m\n"
+                f"Calories: {cal}\n\n"
+            )
+            if ex['avg_hr'] is not None:
+                inf+=f"Avg HR: {ex['avg_hr']} bpm\n"
+            if ex['max_hr'] is not None:
+                inf+=f"Max HR: {ex['max_hr']} bpm\n"
+            if ex['avg_pace']:
+                inf+=f"Pace: {ex['avg_pace']}\n"
+            if ex['elapsed_time']:
+                inf+=f"Elapsed Time: {ex['elapsed_time']}\n"
+            if ex['avg_temp'] is not None:
+                inf+=f"Avg Temp: {ex['avg_temp']} °C\n"
+            if ex['location']:
+                inf+=f"Location: {ex['location']}\n"
+
+            ctk.CTkLabel(frame, text=inf, justify="left").pack(padx=10,pady=5)
+
+            col+=1
+            if col>1:
+                col=0
+                row+=1
 
     def export_pdf(self):
-        file_path = filedialog.asksaveasfilename(
+        file_path= filedialog.asksaveasfilename(
             defaultextension=".pdf",
-            filetypes=[("PDF Files", "*.pdf")]
+            filetypes=[("PDF Files","*.pdf")]
         )
         if not file_path:
             return
         try:
-            c = canvas.Canvas(file_path, pagesize=letter)
-            c.setFont("Helvetica", 12)
+            c= canvas.Canvas(file_path, pagesize=letter)
+            c.setFont("Helvetica",12)
 
-            selected = self.act_list.curselection()
-            if selected:
-                activity_key = list(self.activities.keys())[selected[0]]
-                activity = self.activities[activity_key]
+            sel= self.act_list.curselection()
+            if sel:
+                path= list(self.activities.keys())[sel[0]]
+                data= self.activities[path]
+                laps= data['laps']
+                dur= sum(l.get('total_time',0) for l in laps)
+                dist= sum(l.get('distance',0) for l in laps)
 
-                laps = activity['laps']
-                total_duration = sum(l.get('total_time', 0) for l in laps)
-                total_distance = sum(l.get('distance', 0) for l in laps)
-
-                c.drawString(100, 750, f"Activity Report: {activity['metadata']['sport']}")
-                c.drawString(100, 730, f"Date: {activity['metadata']['start_time']}")
-                c.drawString(100, 710, f"Duration: {round(total_duration,2)}s")
-                c.drawString(100, 690, f"Distance: {round(total_distance,2)}m")
-                c.drawString(100, 670, f"Extended Stats: {activity['extended_stats']}")
+                c.drawString(100,750,f"Activity Report: {data['metadata'].get('sport','Unknown')}")
+                c.drawString(100,730,f"Date: {data['metadata'].get('start_time','N/A')}")
+                c.drawString(100,710,f"Duration: {round(dur,2)} s")
+                c.drawString(100,690,f"Distance: {round(dist,2)} m")
+                c.drawString(100,670,f"Extended Stats: {data.get('extended_stats',{})}")
 
             c.save()
             self.update_status(f"Exported PDF to {file_path}")
@@ -431,58 +634,44 @@ Extended Stats:
 
     def show_training_load(self):
         if not self.activities:
-            messagebox.showwarning("No Data", "Load activities first")
+            messagebox.showinfo("Training Load","No activities loaded.")
             return
-
         import plotly.graph_objects as go
-        fig = go.Figure()
+        fig= go.Figure()
         for path, data in self.activities.items():
-            start_time = data['metadata'].get('start_time', None)
-            training_load = data['extended_stats'].get('training_load', None)
-            if start_time and training_load is not None:
+            st= data['metadata'].get('start_time',None)
+            tl= data['extended_stats'].get('training_load',None)
+            if st and tl is not None:
                 fig.add_trace(go.Scatter(
-                    x=[start_time], y=[training_load],
+                    x=[st], y=[tl],
                     name=os.path.basename(path),
                     mode='markers+text',
                     text=[os.path.basename(path)],
-                    textposition="top center"
+                    textposition='top center'
                 ))
         fig.update_layout(title="Training Load Comparison", template='plotly_dark')
         fig.show()
 
     def delete_activity(self):
-        selected = self.act_list.curselection()
-        if not selected:
+        sel= self.act_list.curselection()
+        if not sel:
             return
-        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete these activities?")
+        confirm= messagebox.askyesno("Confirm Delete","Are you sure you want to delete these activities?")
         if confirm:
-            for idx in reversed(selected):
-                key = list(self.activities.keys())[idx]
+            for s in reversed(sel):
+                key= list(self.activities.keys())[s]
                 if key in self.activities:
                     del self.activities[key]
-                self.act_list.delete(idx)
-            self.update_status(f"Deleted {len(selected)} activities")
+                self.act_list.delete(s)
+            self.update_status(f"Deleted {len(sel)} activities")
 
-    def filter_activities(self, event=None):
-        search_term = self.search_entry.get().lower()
-        self.act_list.delete(0, tk.END)
-        for path in self.activities.keys():
-            fname = os.path.basename(path).lower()
-            if search_term in fname:
-                self.act_list.insert(tk.END, os.path.basename(path))
+    def update_status(self, msg):
+        self.status_bar.configure(text=msg)
 
-    # ------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------
-    def update_status(self, message):
-        self.status_bar.configure(text=message)
+    def show_error(self, msg):
+        messagebox.showerror("Error", msg)
 
-    def show_error(self, message):
-        messagebox.showerror("Error", message)
 
-# ----------------------------------------
-# Entry point
-# ----------------------------------------
 if __name__ == "__main__":
-    app = GarminAdvancedAnalyzer()
+    app = GarminUltimateAnalyzer()
     app.mainloop()
